@@ -5,7 +5,7 @@ on:
 
 env:
   BUILD_NAME: web_export
-  GODOT_VERSION_STATUS: stable
+  GODOT_VERSION_STATUS: dev3
 
 jobs:
   build-windows-editor:
