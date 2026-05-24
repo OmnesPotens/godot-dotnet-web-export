@@ -19,7 +19,6 @@ jobs:
         platform=macos
         arch=x86_64
         target=editor
-        dev_build=yes
         optimize=debug
 
     steps:
@@ -64,7 +63,6 @@ jobs:
         platform=macos
         arch=arm64
         target=editor
-        dev_build=yes
         optimize=debug
 
     steps:

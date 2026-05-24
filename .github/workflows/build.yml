@@ -64,7 +64,6 @@ jobs:
         arch=x86_64
         target=editor
         module_mono_enabled=yes
-        dev_build=yes
         optimize=speed
 
     steps:
