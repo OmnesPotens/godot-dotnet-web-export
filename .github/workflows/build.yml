@@ -94,11 +94,16 @@ jobs:
       - name: Build Editor (macOS x86_64)
         run: scons -C godot ${{ env.SCONS_FLAGS }}
 
+      - name: Generate Mono Glue (x86_64)
+        run: ./godot/bin/godot.macos.editor.x86_64.mono --headless --quit --generate-mono-glue godot/bin/glue
+
       - name: Upload x86_64 Editor Binary
         uses: actions/upload-artifact@v7
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.editor.x86_64
-          path: godot/bin/godot.macos.editor.x86_64.mono
+          path: |
+            godot/bin/godot.macos.editor.x86_64.mono
+            godot/bin/glue/**
 
 
   build-macos-editor-arm64:
@@ -137,6 +142,18 @@ jobs:
 
       - name: Set Up ANGLE Dependencies
         run: python godot/misc/scripts/install_angle.py
+
+      - name: Download x86_64 Editor Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: godot.macos.mono.${{ env.BUILD_NAME }}.editor.x86_64
+          path: godot/bin
+
+      - name: Copy Mono Glue
+        run: cp -rf godot/bin/glue/* godot/modules/mono/glue
+
+      - name: Build Mono Assemblies
+        run: python godot/modules/mono/build_scripts/build_assemblies.py --godot-output-dir=godot/bin --push-nupkgs-local godot/bin/nuget
 
       - name: Build Editor (macOS arm64)
         run: scons -C godot ${{ env.SCONS_FLAGS }}
