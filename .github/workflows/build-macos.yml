@@ -19,6 +19,7 @@ jobs:
         platform=macos
         arch=x86_64
         target=editor
+        module_mono_enabled=yes
         optimize=debug
 
     steps:
@@ -54,7 +55,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: godot-editor-x86_64-binary
-          path: godot-4.7-beta3/bin/godot.macos.editor.x86_64
+          path: godot-4.7-beta3/bin/godot.macos.editor.x86_64.mono
 
   build-macos-editor-arm64:
     runs-on: macos-latest
@@ -63,6 +64,7 @@ jobs:
         platform=macos
         arch=arm64
         target=editor
+        module_mono_enabled=yes
         optimize=debug
 
     steps:
@@ -98,7 +100,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: godot-editor-arm64-binary
-          path: godot-4.7-beta3/bin/godot.macos.editor.arm64
+          path: godot-4.7-beta3/bin/godot.macos.editor.arm64.mono
 
   build-macos-editor-bundle:
     runs-on: macos-latest
@@ -127,16 +129,16 @@ jobs:
         run: |
           cd godot-4.7-beta3
           lipo -create \
-            bin/godot.macos.editor.x86_64 \
-            bin/godot.macos.editor.arm64 \
-            -output bin/godot.macos.editor.universal
+            bin/godot.macos.editor.x86_64.mono \
+            bin/godot.macos.editor.arm64.mono \
+            -output bin/godot.macos.editor.universal.mono
 
       - name: Create .app Bundle
         run: |
           cd godot-4.7-beta3
           cp -r misc/dist/macos_tools.app ./bin/Godot.app
           mkdir -p bin/Godot.app/Contents/MacOS
-          cp bin/godot.macos.editor.universal bin/Godot.app/Contents/MacOS/Godot
+          cp bin/godot.macos.editor.universal.mono bin/Godot.app/Contents/MacOS/Godot
           chmod +x bin/Godot.app/Contents/MacOS/Godot
 
       - name: Code Sign .app Bundle
@@ -188,20 +190,20 @@ jobs:
       - name: Build Export Template Debug (x86_64)
         run: |
           cd godot-4.7-beta3
-          scons platform=macos target=template_debug arch=x86_64 optimize=speed
+          scons platform=macos target=template_debug arch=x86_64 module_mono_enabled=yes optimize=speed
 
       - name: Build Export Template Release (x86_64)
         run: |
           cd godot-4.7-beta3
-          scons platform=macos target=template_release arch=x86_64 optimize=speed lto=full
+          scons platform=macos target=template_release arch=x86_64 module_mono_enabled=yes optimize=speed lto=full
 
       - name: Upload x86_64 Template Binaries
         uses: actions/upload-artifact@v4
         with:
           name: godot-templates-x86_64-binaries
           path: |
-            godot-4.7-beta3/bin/godot.macos.template_debug.x86_64
-            godot-4.7-beta3/bin/godot.macos.template_release.x86_64
+            godot-4.7-beta3/bin/godot.macos.template_debug.x86_64.mono
+            godot-4.7-beta3/bin/godot.macos.template_release.x86_64.mono
 
   build-export-template-arm64:
     runs-on: macos-latest
@@ -233,20 +235,20 @@ jobs:
       - name: Build Export Template Debug (arm64)
         run: |
           cd godot-4.7-beta3
-          scons platform=macos target=template_debug arch=arm64 optimize=speed
+          scons platform=macos target=template_debug arch=arm64 module_mono_enabled=yes optimize=speed
 
       - name: Build Export Template Release (arm64)
         run: |
           cd godot-4.7-beta3
-          scons platform=macos target=template_release arch=arm64 optimize=speed lto=full
+          scons platform=macos target=template_release arch=arm64 module_mono_enabled=yes optimize=speed lto=full
 
       - name: Upload arm64 Template Binaries
         uses: actions/upload-artifact@v4
         with:
           name: godot-templates-arm64-binaries
           path: |
-            godot-4.7-beta3/bin/godot.macos.template_debug.arm64
-            godot-4.7-beta3/bin/godot.macos.template_release.arm64
+            godot-4.7-beta3/bin/godot.macos.template_debug.arm64.mono
+            godot-4.7-beta3/bin/godot.macos.template_release.arm64.mono
 
   build-export-template-universal:
     runs-on: macos-latest
@@ -275,26 +277,26 @@ jobs:
         run: |
           cd godot-4.7-beta3
           lipo -create \
-            bin/godot.macos.template_debug.x86_64 \
-            bin/godot.macos.template_debug.arm64 \
-            -output bin/godot.macos.template_debug.universal
+            bin/godot.macos.template_debug.x86_64.mono \
+            bin/godot.macos.template_debug.arm64.mono \
+            -output bin/godot.macos.template_debug.universal.mono
 
           lipo -create \
-            bin/godot.macos.template_release.x86_64 \
-            bin/godot.macos.template_release.arm64 \
-            -output bin/godot.macos.template_release.universal
+            bin/godot.macos.template_release.x86_64.mono \
+            bin/godot.macos.template_release.arm64.mono \
+            -output bin/godot.macos.template_release.universal.mono
 
       - name: Create Template .app Bundles
         run: |
           cd godot-4.7-beta3
           cp -r misc/dist/macos_template.app ./bin/macos_debug_template.app
           mkdir -p bin/macos_debug_template.app/Contents/MacOS
-          cp bin/godot.macos.template_debug.universal bin/macos_debug_template.app/Contents/MacOS/godot
+          cp bin/godot.macos.template_debug.universal.mono bin/macos_debug_template.app/Contents/MacOS/godot
           chmod +x bin/macos_debug_template.app/Contents/MacOS/godot
 
           cp -r misc/dist/macos_template.app ./bin/macos_release_template.app
           mkdir -p bin/macos_release_template.app/Contents/MacOS
-          cp bin/godot.macos.template_release.universal bin/macos_release_template.app/Contents/MacOS/godot
+          cp bin/godot.macos.template_release.universal.mono bin/macos_release_template.app/Contents/MacOS/godot
           chmod +x bin/macos_release_template.app/Contents/MacOS/godot
 
       - name: Code Sign Template Bundles
