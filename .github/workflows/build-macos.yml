@@ -13,7 +13,7 @@ env:
 
 jobs:
   build-macos-editor-x86_64:
-    runs-on: macos-13
+    runs-on: macos-latest
     env:
       SCONS_FLAGS: >-
         platform=macos
@@ -58,7 +58,7 @@ jobs:
           path: godot-4.7-beta3/bin/godot.macos.editor.x86_64
 
   build-macos-editor-arm64:
-    runs-on: macos-13
+    runs-on: macos-latest
     env:
       SCONS_FLAGS: >-
         platform=macos
@@ -103,7 +103,7 @@ jobs:
           path: godot-4.7-beta3/bin/godot.macos.editor.arm64
 
   build-macos-editor-bundle:
-    runs-on: macos-13
+    runs-on: macos-latest
     needs: [build-macos-editor-x86_64, build-macos-editor-arm64]
 
     steps:
@@ -161,7 +161,7 @@ jobs:
             godot-4.7-beta3/bin/version.txt
 
   build-export-template-x86_64:
-    runs-on: macos-13
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Repository
@@ -206,7 +206,7 @@ jobs:
             godot-4.7-beta3/bin/godot.macos.template_release.x86_64
 
   build-export-template-arm64:
-    runs-on: macos-13
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Repository
@@ -251,7 +251,7 @@ jobs:
             godot-4.7-beta3/bin/godot.macos.template_release.arm64
 
   build-export-template-universal:
-    runs-on: macos-13
+    runs-on: macos-latest
     needs: [build-export-template-x86_64, build-export-template-arm64]
 
     steps:
