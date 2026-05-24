@@ -1,6 +1,7 @@
 name: Build
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 
 env:
   BUILD_NAME: web_export
@@ -54,8 +55,61 @@ jobs:
             godot\bin\glue\**
 
 
+  build-macos-editor:
+    runs-on: macos-13
+
+    env:
+      SCONS_FLAGS: >-
+        platform=macos
+        arch=x86_64
+        target=editor
+        module_mono_enabled=yes
+        dev_build=yes
+        optimize=speed
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          submodules: recursive
+
+      - name: Set Up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: 3.x
+
+      - name: Set Up SCons
+        run: python -m pip install scons
+
+      - name: Set Up Vulkan SDK
+        run: |
+          chmod +x godot/misc/scripts/install_vulkan_sdk_macos.sh
+          bash godot/misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Build Editor (macOS)
+        run: scons -C godot ${{ env.SCONS_FLAGS }}
+
+      - name: Generate Mono Glue
+        run: ./godot/bin/godot.macos.editor.x86_64.mono --headless --quit --generate-mono-glue godot/bin/glue
+
+      - name: Save Version Text File
+        run: |
+          ./godot/bin/godot.macos.editor.x86_64.mono --headless --quit --version > godot/bin/version.txt
+          cat godot/bin/version.txt
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot.macos.mono.${{ env.BUILD_NAME }}.editor
+          path: |
+            godot/bin/godot.macos.editor.x86_64.mono
+            godot/bin/version.txt
+            godot/bin/glue/**
+
+
   # Must build export templates on Linux due to the "command line too long" error on windows.
-  build-export-template-release:
+  build-export-template-release-windows:
     runs-on: ubuntu-latest
 
     needs: build-windows-editor
@@ -76,6 +130,8 @@ jobs:
 
       - name: Set Up Dependencies
         uses: ./.github/actions/web-template-deps
+        with:
+          editor-artifact-name: godot.windows.mono.${{ env.BUILD_NAME }}.editor
 
       - name: Build Web Template (Release)
         run: scons -C godot platform=web target=template_release module_mono_enabled=yes ${{ env.SCONS_FLAGS }}
@@ -90,7 +146,7 @@ jobs:
             godot/bin/nuget/**
 
 
-  build-export-template-debug:
+  build-export-template-debug-windows:
     runs-on: ubuntu-latest
 
     needs: build-windows-editor
@@ -112,6 +168,8 @@ jobs:
 
       - name: Set Up Dependencies
         uses: ./.github/actions/web-template-deps
+        with:
+          editor-artifact-name: godot.windows.mono.${{ env.BUILD_NAME }}.editor
 
       - name: Build Web Template (Debug)
         run: scons -C godot platform=web target=template_debug module_mono_enabled=yes ${{ env.SCONS_FLAGS }}
@@ -123,10 +181,82 @@ jobs:
           path: godot/bin/godot.web.template_debug.wasm32.mono.zip
 
 
+  build-export-template-release-macos:
+    runs-on: ubuntu-latest
+
+    needs: build-macos-editor
+
+    env:
+      SCONS_FLAGS: >-
+        optimize=speed
+        lto=full
+        ccflags="-DNDEBUG"
+        linkflags="-sMALLOC=mimalloc"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          submodules: recursive
+
+      - name: Set Up Dependencies
+        uses: ./.github/actions/web-template-deps
+        with:
+          editor-artifact-name: godot.macos.mono.${{ env.BUILD_NAME }}.editor
+
+      - name: Build Web Template (Release)
+        run: scons -C godot platform=web target=template_release module_mono_enabled=yes ${{ env.SCONS_FLAGS }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot.macos.mono.${{ env.BUILD_NAME }}.template_release
+          path: |
+            godot/bin/godot.web.template_release.wasm32.mono.zip
+            godot/bin/GodotSharp/**
+            godot/bin/nuget/**
+
+
+  build-export-template-debug-macos:
+    runs-on: ubuntu-latest
+
+    needs: build-macos-editor
+
+    env:
+      # Different build settings due to memory limitations of the standard github runner
+      SCONS_FLAGS: >-
+        optimize=speed
+        lto=thin
+        ccflags="-DNDEBUG"
+        linkflags="-sMALLOC=mimalloc"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          submodules: recursive
+
+      - name: Set Up Dependencies
+        uses: ./.github/actions/web-template-deps
+        with:
+          editor-artifact-name: godot.macos.mono.${{ env.BUILD_NAME }}.editor
+
+      - name: Build Web Template (Debug)
+        run: scons -C godot platform=web target=template_debug module_mono_enabled=yes ${{ env.SCONS_FLAGS }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot.macos.mono.${{ env.BUILD_NAME }}.template_debug
+          path: godot/bin/godot.web.template_debug.wasm32.mono.zip
+
+
   build-final-zip:
     runs-on: ubuntu-latest
 
-    needs: [build-export-template-release, build-export-template-debug]
+    needs: [build-export-template-release-windows, build-export-template-debug-windows]
 
     outputs:
       version: ${{ steps.prepare.outputs.version }}

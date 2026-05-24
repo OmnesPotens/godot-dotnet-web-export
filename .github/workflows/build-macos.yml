@@ -1,0 +1,459 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_NAME: beta3
+  GODOT_VERSION_STATUS: beta3
+
+jobs:
+  build-macos-editor-x86_64:
+    runs-on: macos-13
+    env:
+      SCONS_FLAGS: >-
+        platform=macos
+        arch=x86_64
+        target=editor
+        dev_build=yes
+        optimize=debug
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          submodules: recursive
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+          cache: pip
+
+      - name: Install SCons
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install scons
+
+      - name: Install Vulkan SDK
+        run: |
+          cd godot-4.7-beta3
+          chmod +x misc/scripts/install_vulkan_sdk_macos.sh
+          bash misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Build Editor (x86_64)
+        run: |
+          cd godot-4.7-beta3
+          scons ${{ env.SCONS_FLAGS }}
+
+      - name: Upload x86_64 Editor Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-editor-x86_64-binary
+          path: godot-4.7-beta3/bin/godot.macos.editor.x86_64
+
+  build-macos-editor-arm64:
+    runs-on: macos-13
+    env:
+      SCONS_FLAGS: >-
+        platform=macos
+        arch=arm64
+        target=editor
+        dev_build=yes
+        optimize=debug
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          submodules: recursive
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+          cache: pip
+
+      - name: Install SCons
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install scons
+
+      - name: Install Vulkan SDK
+        run: |
+          cd godot-4.7-beta3
+          chmod +x misc/scripts/install_vulkan_sdk_macos.sh
+          bash misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Build Editor (arm64)
+        run: |
+          cd godot-4.7-beta3
+          scons ${{ env.SCONS_FLAGS }}
+
+      - name: Upload arm64 Editor Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-editor-arm64-binary
+          path: godot-4.7-beta3/bin/godot.macos.editor.arm64
+
+  build-macos-editor-bundle:
+    runs-on: macos-13
+    needs: [build-macos-editor-x86_64, build-macos-editor-arm64]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          submodules: recursive
+
+      - name: Download x86_64 Editor Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: godot-editor-x86_64-binary
+          path: godot-4.7-beta3/bin/
+
+      - name: Download arm64 Editor Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: godot-editor-arm64-binary
+          path: godot-4.7-beta3/bin/
+
+      - name: Create Universal 2 Editor Binary
+        run: |
+          cd godot-4.7-beta3
+          lipo -create \
+            bin/godot.macos.editor.x86_64 \
+            bin/godot.macos.editor.arm64 \
+            -output bin/godot.macos.editor.universal
+
+      - name: Create .app Bundle
+        run: |
+          cd godot-4.7-beta3
+          cp -r misc/dist/macos_tools.app ./bin/Godot.app
+          mkdir -p bin/Godot.app/Contents/MacOS
+          cp bin/godot.macos.editor.universal bin/Godot.app/Contents/MacOS/Godot
+          chmod +x bin/Godot.app/Contents/MacOS/Godot
+
+      - name: Code Sign .app Bundle
+        run: |
+          cd godot-4.7-beta3
+          codesign --force --timestamp --options=runtime --entitlements misc/dist/macos/editor.entitlements -s - bin/Godot.app
+
+      - name: Save Version Text File
+        run: |
+          cd godot-4.7-beta3
+          ./bin/Godot.app/Contents/MacOS/Godot --headless --quit --version > bin/version.txt
+          cat bin/version.txt
+
+      - name: Upload Editor Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot.macos.editor.universal
+          path: |
+            godot-4.7-beta3/bin/Godot.app
+            godot-4.7-beta3/bin/version.txt
+
+  build-export-template-x86_64:
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          submodules: recursive
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+          cache: pip
+
+      - name: Install SCons
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install scons
+
+      - name: Install Vulkan SDK
+        run: |
+          cd godot-4.7-beta3
+          chmod +x misc/scripts/install_vulkan_sdk_macos.sh
+          bash misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Build Export Template Debug (x86_64)
+        run: |
+          cd godot-4.7-beta3
+          scons platform=macos target=template_debug arch=x86_64 optimize=speed
+
+      - name: Build Export Template Release (x86_64)
+        run: |
+          cd godot-4.7-beta3
+          scons platform=macos target=template_release arch=x86_64 optimize=speed lto=full
+
+      - name: Upload x86_64 Template Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-templates-x86_64-binaries
+          path: |
+            godot-4.7-beta3/bin/godot.macos.template_debug.x86_64
+            godot-4.7-beta3/bin/godot.macos.template_release.x86_64
+
+  build-export-template-arm64:
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          submodules: recursive
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+          cache: pip
+
+      - name: Install SCons
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install scons
+
+      - name: Install Vulkan SDK
+        run: |
+          cd godot-4.7-beta3
+          chmod +x misc/scripts/install_vulkan_sdk_macos.sh
+          bash misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Build Export Template Debug (arm64)
+        run: |
+          cd godot-4.7-beta3
+          scons platform=macos target=template_debug arch=arm64 optimize=speed
+
+      - name: Build Export Template Release (arm64)
+        run: |
+          cd godot-4.7-beta3
+          scons platform=macos target=template_release arch=arm64 optimize=speed lto=full
+
+      - name: Upload arm64 Template Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-templates-arm64-binaries
+          path: |
+            godot-4.7-beta3/bin/godot.macos.template_debug.arm64
+            godot-4.7-beta3/bin/godot.macos.template_release.arm64
+
+  build-export-template-universal:
+    runs-on: macos-13
+    needs: [build-export-template-x86_64, build-export-template-arm64]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          submodules: recursive
+
+      - name: Download x86_64 Template Binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: godot-templates-x86_64-binaries
+          path: godot-4.7-beta3/bin/
+
+      - name: Download arm64 Template Binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: godot-templates-arm64-binaries
+          path: godot-4.7-beta3/bin/
+
+      - name: Create Universal 2 Template Binaries
+        run: |
+          cd godot-4.7-beta3
+          lipo -create \
+            bin/godot.macos.template_debug.x86_64 \
+            bin/godot.macos.template_debug.arm64 \
+            -output bin/godot.macos.template_debug.universal
+
+          lipo -create \
+            bin/godot.macos.template_release.x86_64 \
+            bin/godot.macos.template_release.arm64 \
+            -output bin/godot.macos.template_release.universal
+
+      - name: Create Template .app Bundles
+        run: |
+          cd godot-4.7-beta3
+          cp -r misc/dist/macos_template.app ./bin/macos_debug_template.app
+          mkdir -p bin/macos_debug_template.app/Contents/MacOS
+          cp bin/godot.macos.template_debug.universal bin/macos_debug_template.app/Contents/MacOS/godot
+          chmod +x bin/macos_debug_template.app/Contents/MacOS/godot
+
+          cp -r misc/dist/macos_template.app ./bin/macos_release_template.app
+          mkdir -p bin/macos_release_template.app/Contents/MacOS
+          cp bin/godot.macos.template_release.universal bin/macos_release_template.app/Contents/MacOS/godot
+          chmod +x bin/macos_release_template.app/Contents/MacOS/godot
+
+      - name: Code Sign Template Bundles
+        run: |
+          cd godot-4.7-beta3
+          codesign --force --timestamp --options=runtime --entitlements misc/dist/macos/template.entitlements -s - bin/macos_debug_template.app
+          codesign --force --timestamp --options=runtime --entitlements misc/dist/macos/template.entitlements -s - bin/macos_release_template.app
+
+      - name: Upload Export Templates
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot.macos.templates.universal
+          path: |
+            godot-4.7-beta3/bin/macos_debug_template.app
+            godot-4.7-beta3/bin/macos_release_template.app
+
+  build-final-zip:
+    runs-on: ubuntu-latest
+    needs: [build-macos-editor-bundle, build-export-template-universal]
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      status: ${{ steps.prepare.outputs.status }}
+      build_name: ${{ steps.prepare.outputs.build_name }}
+      hash: ${{ steps.prepare.outputs.hash }}
+      filename: ${{ steps.prepare.outputs.filename }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Download Editor Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: godot.macos.editor.universal
+          path: ./build-artifacts/editor
+
+      - name: Download Export Templates
+        uses: actions/download-artifact@v4
+        with:
+          name: godot.macos.templates.universal
+          path: ./build-artifacts/templates
+
+      - name: Prepare Files
+        id: prepare
+        run: |
+          set -euo pipefail
+
+          version_output=$(tr -d '\r\n' < ./build-artifacts/editor/version.txt)
+
+          if [[ $version_output =~ ^([0-9.]+)\.([^0-9.][^.]*)\.(mono\.)?(.+)\.([^.]+)$ ]]; then
+            version=${BASH_REMATCH[1]}
+            status=${BASH_REMATCH[2]}
+            build_name=${BASH_REMATCH[4]}
+            hash=${BASH_REMATCH[5]}
+          else
+            version=$(echo "$version_output" | cut -d. -f1-3)
+            status="${GODOT_VERSION_STATUS}"
+            build_name="${BUILD_NAME}"
+            hash=$(echo "$version_output" | rev | cut -d. -f1 | rev)
+          fi
+
+          filename=Godot_v${version}-${status}_macos_universal2_${build_name}
+
+          mkdir -p "${filename}/editor" "${filename}/templates"
+
+          cp -r ./build-artifacts/editor/Godot.app "${filename}/editor/"
+          cp -r ./build-artifacts/templates/macos_debug_template.app "${filename}/templates/"
+          cp -r ./build-artifacts/templates/macos_release_template.app "${filename}/templates/"
+          cp README.md "${filename}/"
+          cp Program.cs "${filename}/" 2>/dev/null || true
+          cp global.json "${filename}/" 2>/dev/null || true
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          echo "build_name=${build_name}" >> "$GITHUB_OUTPUT"
+          echo "hash=${hash}" >> "$GITHUB_OUTPUT"
+          echo "filename=${filename}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Install Script
+        run: |
+          script_path=${{ steps.prepare.outputs.filename }}/install.sh
+          mkdir -p "$(dirname "$script_path")"
+          cat > "$script_path" << 'EOF'
+          #!/bin/bash
+          set -e
+
+          SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+          VERSION_STATUS="${{ steps.prepare.outputs.version }}-${{ steps.prepare.outputs.status }}"
+
+          echo "Installing Godot $VERSION_STATUS export templates for macOS..."
+          echo
+
+          TEMPLATE_FOLDER="$HOME/Library/Application Support/Godot/export_templates/${VERSION_STATUS}.mono"
+
+          echo "Creating template directory at '$TEMPLATE_FOLDER'..."
+          mkdir -p "$TEMPLATE_FOLDER"
+
+          echo "Installing export templates..."
+          cp -r "$SCRIPT_DIR/templates/macos_debug_template.app" "$TEMPLATE_FOLDER/"
+          cp -r "$SCRIPT_DIR/templates/macos_release_template.app" "$TEMPLATE_FOLDER/"
+
+          echo
+          echo "Installation complete!"
+          echo "You can now open your Godot project with the included Godot.app to export for macOS."
+          echo "The export templates are located at: $TEMPLATE_FOLDER"
+          EOF
+
+          chmod +x "$script_path"
+
+      - name: Create Zip File
+        run: |
+          cd "$(dirname "${{ steps.prepare.outputs.filename }}")"
+          zip -r9 "${{ steps.prepare.outputs.filename }}.zip" "${{ steps.prepare.outputs.filename }}" -x "*/.*"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prepare.outputs.filename }}.artifact
+          path: ${{ steps.prepare.outputs.filename }}.zip
+
+  upload-release:
+    runs-on: ubuntu-latest
+    needs: build-final-zip
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Artifact Zip File
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-final-zip.outputs.filename }}.artifact
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ needs.build-final-zip.outputs.filename }}.zip
+          tag_name: ${{ needs.build-final-zip.outputs.version }}-${{ needs.build-final-zip.outputs.status }}-macos
+          target_commitish: ${{ github.ref }}
+          prerelease: ${{ needs.build-final-zip.outputs.status != 'stable' }}
+          body: >-
+            macOS build of [Godot Engine](https://godotengine.org/)
+            ${{ needs.build-final-zip.outputs.version }}-${{ needs.build-final-zip.outputs.status }}
+
+            **Features:**
+            - Universal 2 editor binary (Intel + Apple Silicon)
+            - Export templates (debug & release)
+            - Includes entitlements and code signing
+
+            **Installation:**
+            1. Extract the zip file.
+            2. Run `bash install.sh` from the extracted directory.
+            3. Open your Godot project with the included `Godot.app` to export for macOS.
+
+            **System Requirements:**
+            - macOS 11.0 or later
+            - Intel (x86_64) or Apple Silicon (arm64) Mac
+            > <sub>The export templates are automatically installed to
+            `~/Library/Application Support/Godot/export_templates/`.</sub>
