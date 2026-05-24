@@ -108,6 +108,7 @@ jobs:
 
   build-macos-editor-arm64:
     runs-on: macos-latest
+    needs: build-macos-editor-x86_64
 
     env:
       SCONS_FLAGS: >-
