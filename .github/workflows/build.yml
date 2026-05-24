@@ -61,9 +61,11 @@ jobs:
     env:
       SCONS_FLAGS: >-
         platform=macos
-        arch=x86_64
+        arch=arm64
         target=editor
         module_mono_enabled=yes
+        accesskit=no
+        angle=yes
         optimize=speed
 
     steps:
@@ -86,15 +88,18 @@ jobs:
           chmod +x godot/misc/scripts/install_vulkan_sdk_macos.sh
           bash godot/misc/scripts/install_vulkan_sdk_macos.sh
 
+      - name: Set Up ANGLE Dependencies
+        run: python godot/misc/scripts/install_angle.py
+
       - name: Build Editor (macOS)
         run: scons -C godot ${{ env.SCONS_FLAGS }}
 
       - name: Generate Mono Glue
-        run: ./godot/bin/godot.macos.editor.x86_64.mono --headless --quit --generate-mono-glue godot/bin/glue
+        run: ./godot/bin/godot.macos.editor.arm64.mono --headless --quit --generate-mono-glue godot/bin/glue
 
       - name: Save Version Text File
         run: |
-          ./godot/bin/godot.macos.editor.x86_64.mono --headless --quit --version > godot/bin/version.txt
+          ./godot/bin/godot.macos.editor.arm64.mono --headless --quit --version > godot/bin/version.txt
           cat godot/bin/version.txt
 
       - name: Upload Artifacts
@@ -102,7 +107,7 @@ jobs:
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.editor
           path: |
-            godot/bin/godot.macos.editor.x86_64.mono
+            godot/bin/godot.macos.editor.arm64.mono
             godot/bin/version.txt
             godot/bin/glue/**
 
