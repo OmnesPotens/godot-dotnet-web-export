@@ -24,13 +24,13 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Set Up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
         with:
           python-version: 3.x
           cache: pip
@@ -52,7 +52,7 @@ jobs:
           scons ${{ env.SCONS_FLAGS }}
 
       - name: Upload x86_64 Editor Binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot-editor-x86_64-binary
           path: godot-4.7-beta3/bin/godot.macos.editor.x86_64.mono
@@ -69,13 +69,13 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Set Up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
         with:
           python-version: 3.x
           cache: pip
@@ -97,7 +97,7 @@ jobs:
           scons ${{ env.SCONS_FLAGS }}
 
       - name: Upload arm64 Editor Binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot-editor-arm64-binary
           path: godot-4.7-beta3/bin/godot.macos.editor.arm64.mono
@@ -108,19 +108,19 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Download x86_64 Editor Binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot-editor-x86_64-binary
           path: godot-4.7-beta3/bin/
 
       - name: Download arm64 Editor Binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot-editor-arm64-binary
           path: godot-4.7-beta3/bin/
@@ -153,7 +153,7 @@ jobs:
           cat bin/version.txt
 
       - name: Upload Editor Bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.macos.editor.universal
           path: |
@@ -165,13 +165,13 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Set Up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
         with:
           python-version: 3.x
           cache: pip
@@ -198,7 +198,7 @@ jobs:
           scons platform=macos target=template_release arch=x86_64 module_mono_enabled=yes optimize=speed lto=full
 
       - name: Upload x86_64 Template Binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot-templates-x86_64-binaries
           path: |
@@ -210,13 +210,13 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Set Up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
         with:
           python-version: 3.x
           cache: pip
@@ -243,7 +243,7 @@ jobs:
           scons platform=macos target=template_release arch=arm64 module_mono_enabled=yes optimize=speed lto=full
 
       - name: Upload arm64 Template Binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot-templates-arm64-binaries
           path: |
@@ -256,19 +256,19 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Download x86_64 Template Binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot-templates-x86_64-binaries
           path: godot-4.7-beta3/bin/
 
       - name: Download arm64 Template Binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot-templates-arm64-binaries
           path: godot-4.7-beta3/bin/
@@ -306,7 +306,7 @@ jobs:
           codesign --force --timestamp --options=runtime --entitlements misc/dist/macos/template.entitlements -s - bin/macos_release_template.app
 
       - name: Upload Export Templates
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.macos.templates.universal
           path: |
@@ -325,18 +325,18 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
 
       - name: Download Editor Bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.macos.editor.universal
           path: ./build-artifacts/editor
 
       - name: Download Export Templates
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.macos.templates.universal
           path: ./build-artifacts/templates
@@ -414,7 +414,7 @@ jobs:
           zip -r9 "${{ steps.prepare.outputs.filename }}.zip" "${{ steps.prepare.outputs.filename }}" -x "*/.*"
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: ${{ steps.prepare.outputs.filename }}.artifact
           path: ${{ steps.prepare.outputs.filename }}.zip
@@ -427,12 +427,12 @@ jobs:
 
     steps:
       - name: Download Artifact Zip File
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: ${{ needs.build-final-zip.outputs.filename }}.artifact
 
       - name: Upload Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda #v3.0.0
         with:
           files: ${{ needs.build-final-zip.outputs.filename }}.zip
           tag_name: ${{ needs.build-final-zip.outputs.version }}-${{ needs.build-final-zip.outputs.status }}-macos

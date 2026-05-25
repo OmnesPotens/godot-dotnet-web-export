@@ -18,13 +18,13 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Set Up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
         with:
           python-version: 3.x
 
@@ -46,7 +46,7 @@ jobs:
           type godot\bin\version.txt
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.windows.mono.${{ env.BUILD_NAME }}.editor
           path: |
@@ -70,13 +70,13 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Set Up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
         with:
           python-version: 3.x
 
@@ -98,7 +98,7 @@ jobs:
         run: ./godot/bin/godot.macos.editor.x86_64.mono --headless --quit --generate-mono-glue godot/bin/glue
 
       - name: Upload x86_64 Editor Binary
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.editor.x86_64
           path: |
@@ -123,13 +123,13 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Set Up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
         with:
           python-version: 3.x
 
@@ -145,7 +145,7 @@ jobs:
         run: python godot/misc/scripts/install_angle.py
 
       - name: Download x86_64 Editor Artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.editor.x86_64
           path: godot/bin
@@ -160,7 +160,7 @@ jobs:
         run: scons -C godot ${{ env.SCONS_FLAGS }}
 
       - name: Upload arm64 Editor Binary
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.editor.arm64
           path: godot/bin/godot.macos.editor.arm64.mono
@@ -173,19 +173,19 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
 
       - name: Download x86_64 Editor Binary
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.editor.x86_64
           path: godot/bin
 
       - name: Download arm64 Editor Binary
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.editor.arm64
           path: godot/bin
@@ -217,7 +217,7 @@ jobs:
         run: ./godot/bin/Godot.app/Contents/MacOS/Godot --headless --quit --generate-mono-glue godot/bin/glue
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.editor
           path: |
@@ -241,7 +241,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
@@ -255,7 +255,7 @@ jobs:
         run: scons -C godot platform=web target=template_release module_mono_enabled=yes ${{ env.SCONS_FLAGS }}
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.windows.mono.${{ env.BUILD_NAME }}.template_release
           path: |
@@ -279,7 +279,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
@@ -293,7 +293,7 @@ jobs:
         run: scons -C godot platform=web target=template_debug module_mono_enabled=yes ${{ env.SCONS_FLAGS }}
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.windows.mono.${{ env.BUILD_NAME }}.template_debug
           path: godot/bin/godot.web.template_debug.wasm32.mono.zip
@@ -313,7 +313,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
@@ -327,7 +327,7 @@ jobs:
         run: scons -C godot platform=web target=template_release module_mono_enabled=yes ${{ env.SCONS_FLAGS }}
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.template_release
           path: |
@@ -351,7 +351,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
           submodules: recursive
@@ -365,7 +365,7 @@ jobs:
         run: scons -C godot platform=web target=template_debug module_mono_enabled=yes ${{ env.SCONS_FLAGS }}
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.template_debug
           path: godot/bin/godot.web.template_debug.wasm32.mono.zip
@@ -385,24 +385,24 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
 
       - name: Download Editor Artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.windows.mono.${{ env.BUILD_NAME }}.editor
           path: godot/bin
 
       - name: Download Web Template (Release) Artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.windows.mono.${{ env.BUILD_NAME }}.template_release
           path: godot/bin
 
       - name: Download Web Template (Debug) Artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.windows.mono.${{ env.BUILD_NAME }}.template_debug
           path: godot/bin
@@ -494,7 +494,7 @@ jobs:
         run: 7z a ${{ steps.prepare.outputs.filename }}.zip ${{ steps.prepare.outputs.filename }} -r -mm=Deflate64 -mx=9 -bb
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: ${{ steps.prepare.outputs.filename }}.artifact
           path: ${{ steps.prepare.outputs.filename }}.zip
@@ -514,24 +514,24 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
         with:
           ref: ${{ github.ref }}
 
       - name: Download Editor Artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.editor
           path: godot/bin
 
       - name: Download Web Template (Release) Artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.template_release
           path: godot/bin
 
       - name: Download Web Template (Debug) Artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: godot.macos.mono.${{ env.BUILD_NAME }}.template_debug
           path: godot/bin
@@ -614,7 +614,7 @@ jobs:
             "${{ steps.prepare.outputs.filename }}.zip"
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: ${{ steps.prepare.outputs.filename }}.artifact
           path: ${{ steps.prepare.outputs.filename }}.zip
@@ -629,17 +629,17 @@ jobs:
 
     steps:
       - name: Download Windows Artifact Zip File
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: ${{ needs.build-final-zip-windows.outputs.filename }}.artifact
 
       - name: Download macOS Artifact Zip File
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
         with:
           name: ${{ needs.build-final-zip-macos.outputs.filename }}.artifact
 
       - name: Upload Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda #v3.0.0
         with:
           files: |
             ${{ needs.build-final-zip-windows.outputs.filename }}.zip
