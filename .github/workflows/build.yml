@@ -65,7 +65,6 @@ jobs:
         target=editor
         module_mono_enabled=yes
         accesskit=no
-        angle=yes
         optimize=speed
 
     steps:
@@ -89,10 +88,18 @@ jobs:
           bash godot/misc/scripts/install_vulkan_sdk_macos.sh
 
       - name: Set Up ANGLE Dependencies
-        run: python godot/misc/scripts/install_angle.py
+        shell: bash
+        run: |
+          if [[ -f godot/misc/scripts/install_angle.py ]]; then
+            python godot/misc/scripts/install_angle.py
+            echo "ANGLE_SCONS_FLAG=angle=yes" >> "$GITHUB_ENV"
+          else
+            echo "::warning::godot/misc/scripts/install_angle.py not found in this Godot revision. Building with angle=no."
+            echo "ANGLE_SCONS_FLAG=angle=no" >> "$GITHUB_ENV"
+          fi
 
       - name: Build Editor (macOS x86_64)
-        run: scons -C godot ${{ env.SCONS_FLAGS }}
+        run: scons -C godot ${{ env.SCONS_FLAGS }} $ANGLE_SCONS_FLAG
 
       - name: Generate Mono Glue (x86_64)
         run: ./godot/bin/godot.macos.editor.x86_64.mono --headless --quit --generate-mono-glue godot/bin/glue
@@ -117,7 +124,6 @@ jobs:
         target=editor
         module_mono_enabled=yes
         accesskit=no
-        angle=yes
         generate_bundle=yes
         optimize=speed
 
@@ -142,7 +148,15 @@ jobs:
           bash godot/misc/scripts/install_vulkan_sdk_macos.sh
 
       - name: Set Up ANGLE Dependencies
-        run: python godot/misc/scripts/install_angle.py
+        shell: bash
+        run: |
+          if [[ -f godot/misc/scripts/install_angle.py ]]; then
+            python godot/misc/scripts/install_angle.py
+            echo "ANGLE_SCONS_FLAG=angle=yes" >> "$GITHUB_ENV"
+          else
+            echo "::warning::godot/misc/scripts/install_angle.py not found in this Godot revision. Building with angle=no."
+            echo "ANGLE_SCONS_FLAG=angle=no" >> "$GITHUB_ENV"
+          fi
 
       - name: Download x86_64 Editor Artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
@@ -157,7 +171,7 @@ jobs:
         run: python godot/modules/mono/build_scripts/build_assemblies.py --godot-output-dir=godot/bin --push-nupkgs-local godot/bin/nuget
 
       - name: Build Editor (macOS arm64)
-        run: scons -C godot ${{ env.SCONS_FLAGS }}
+        run: scons -C godot ${{ env.SCONS_FLAGS }} $ANGLE_SCONS_FLAG
 
       - name: Upload arm64 Editor Binary
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
