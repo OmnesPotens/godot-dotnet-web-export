@@ -220,7 +220,9 @@ jobs:
 
       - name: Code Sign .app Bundle
         run: |
-          codesign --force --timestamp --options=runtime --entitlements godot/misc/dist/macos/editor.entitlements -s - godot/bin/Godot.app
+          # Ad-hoc sign for distribution as unsigned CI artifact (not notarized).
+          # Avoid hardened runtime/timestamp flags which are intended for Developer ID signing.
+          codesign --force --deep -s - godot/bin/Godot.app
 
       - name: Save Version Text File
         run: |
@@ -613,6 +615,10 @@ jobs:
 
           mv "$SCRIPT_DIR/global.json.disabled" "$SCRIPT_DIR/global.json"
           dotnet workload install wasm-tools
+
+          # Downloaded artifacts are often quarantined by macOS. Remove quarantine
+          # so the bundled app can be launched without Gatekeeper blocking.
+          xattr -dr com.apple.quarantine "$SCRIPT_DIR/Godot.app" || true
 
           echo
           echo "Installation complete!"
