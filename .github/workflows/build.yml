@@ -501,7 +501,7 @@ jobs:
 
 
   build-final-zip-macos:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     needs: [build-export-template-release-macos, build-export-template-debug-macos]
 
@@ -608,7 +608,10 @@ jobs:
           chmod +x "$script_filename"
 
       - name: Create Zip File
-        run: 7z a ${{ steps.prepare.outputs.filename }}.zip ${{ steps.prepare.outputs.filename }} -r -mm=Deflate64 -mx=9 -bb
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "${{ steps.prepare.outputs.filename }}" \
+            "${{ steps.prepare.outputs.filename }}.zip"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v7
