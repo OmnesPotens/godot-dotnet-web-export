@@ -1,24 +1,31 @@
 name: Set Up Web Export Template Dependencies
-description: Sets up dependencies for the web export templates.
+description: |
+  Sets up dependencies for building Godot web export templates (platform=web).
+  Installs wasm-tools, Emscripten SDK, copies mono glue from an editor artifact,
+  and builds the managed .NET assemblies needed for module_mono_enabled=yes web builds.
 
 inputs:
   editor-artifact-name:
-    description: Editor artifact name containing glue and version metadata.
+    description: Name of the editor artifact containing the mono glue directory and version metadata.
     required: true
+  godot_source_dir:
+    description: Path to the Godot source root (where modules/mono lives).
+    required: false
+    default: godot-src
+  nuget_output_dir:
+    description: Directory to push local NuGet packages into.
+    required: false
+    default: godot-src/bin/nuget
 
 runs:
   using: composite
 
   steps:
-    - name: Set Up Python
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
-      with:
-        python-version: 3.x
-
     - name: Set Up WASM Tools
       shell: bash
       run: |
-        # Install wasm-tools for both 10.0 and 9.0 SDKs
+        # Install wasm-tools for both the pinned SDK version (global.json) and the system SDK.
+        # The dual install ensures wasm-tools is available regardless of which SDK is active.
         if [[ -f global.json ]]; then
           mv global.json global.json.disabled
         fi
@@ -29,19 +36,20 @@ runs:
           dotnet workload install wasm-tools
         fi
 
+    - name: Set Up Emscripten SDK
+      uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 #v16
+
     - name: Set Up SCons (Linux)
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install scons -y
+        sudo apt-get update -q
+        sudo apt-get install -y scons
 
     - name: Set Up SCons (macOS)
       if: runner.os == 'macOS'
       shell: bash
-      run: |
-        brew update
-        brew install scons
+      run: brew install scons
 
     - name: Set Up SCons (Windows)
       if: runner.os == 'Windows'
@@ -50,19 +58,21 @@ runs:
         python -m pip install --upgrade pip
         python -m pip install scons
 
-    - name: Set Up Emscripten SDK
-      uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 #v16
-
-    - name: Download Artifacts From Editor Build
+    - name: Download Editor Artifact (glue + version)
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
       with:
         name: ${{ inputs.editor-artifact-name }}
-        path: godot/bin
+        path: ${{ inputs.godot_source_dir }}/bin
 
     - name: Copy Mono Glue
       shell: bash
-      run: cp -rf godot/bin/glue/* godot/modules/mono/glue
+      run: |
+        cp -rf "${{ inputs.godot_source_dir }}/bin/glue/." \
+               "${{ inputs.godot_source_dir }}/modules/mono/glue"
 
     - name: Build Mono Assemblies
       shell: bash
-      run: python godot/modules/mono/build_scripts/build_assemblies.py --godot-output-dir=godot/bin --push-nupkgs-local godot/bin/nuget
+      run: |
+        python "${{ inputs.godot_source_dir }}/modules/mono/build_scripts/build_assemblies.py" \
+          --godot-output-dir="${{ inputs.godot_source_dir }}/bin" \
+          --push-nupkgs-local "${{ inputs.nuget_output_dir }}"

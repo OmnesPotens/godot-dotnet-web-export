@@ -1,0 +1,68 @@
+name: Set Up Godot Source
+description: Clones a Godot source repository and validates it is a Godot source tree.
+
+inputs:
+  godot_repo:
+    description: Git repository URL containing Godot source.
+    required: true
+  godot_ref:
+    description: Branch, tag, or commit SHA to check out.
+    required: true
+  godot_source_subdir:
+    description: Subdirectory within the repo that contains the Godot source root (leave empty if the repo root is the Godot source).
+    required: false
+    default: ''
+  destination:
+    description: Local directory to clone into.
+    required: false
+    default: godot-src
+
+outputs:
+  source_dir:
+    description: Absolute path to the Godot source root.
+    value: ${{ steps.resolve.outputs.source_dir }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Clone Godot Source
+      shell: bash
+      run: |
+        # Try shallow clone first (works when godot_ref is a branch or tag).
+        # Fall back to full clone + checkout for commit SHAs.
+        git clone --recurse-submodules --depth=1 \
+          --branch "${{ inputs.godot_ref }}" \
+          "${{ inputs.godot_repo }}" \
+          "${{ inputs.destination }}" \
+        || {
+          git clone --recurse-submodules \
+            "${{ inputs.godot_repo }}" \
+            "${{ inputs.destination }}"
+          git -C "${{ inputs.destination }}" checkout "${{ inputs.godot_ref }}"
+          git -C "${{ inputs.destination }}" submodule update --init --recursive
+        }
+
+    - name: Resolve and Validate Source Directory
+      id: resolve
+      shell: bash
+      run: |
+        base="${{ inputs.destination }}"
+        subdir="${{ inputs.godot_source_subdir }}"
+        if [[ -n "$subdir" ]]; then
+          src="${base}/${subdir}"
+        else
+          src="${base}"
+        fi
+
+        if [[ ! -f "${src}/SConstruct" ]]; then
+          echo "::error::SConstruct not found in '${src}'. Is this a Godot source tree?"
+          exit 1
+        fi
+        if [[ ! -f "${src}/version.py" ]]; then
+          echo "::error::version.py not found in '${src}'. Is this a Godot source tree?"
+          exit 1
+        fi
+
+        echo "source_dir=$(realpath "${src}")" >> "$GITHUB_OUTPUT"
+        echo "Godot source validated at: $(realpath "${src}")"

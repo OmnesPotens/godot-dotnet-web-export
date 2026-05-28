@@ -1,4 +1,7 @@
-name: Build macOS
+# DEPRECATED: replaced by build-godot.yml
+# This workflow is kept for reference only and should not be run.
+# See .github/workflows/build-godot.yml for the unified, corrected workflow.
+name: Build macOS (Deprecated)
 
 on:
   workflow_dispatch:

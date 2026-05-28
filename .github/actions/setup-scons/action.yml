@@ -1,0 +1,30 @@
+name: Set Up SCons
+description: Installs Python 3 and SCons using the appropriate package manager for the current runner OS.
+
+runs:
+  using: composite
+
+  steps:
+    - name: Set Up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
+      with:
+        python-version: 3.x
+
+    - name: Install SCons (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y scons
+
+    - name: Install SCons (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install scons
+
+    - name: Install SCons (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install scons

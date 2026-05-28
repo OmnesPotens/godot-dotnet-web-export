@@ -1,0 +1,1391 @@
+name: Build Godot
+
+on:
+  workflow_dispatch:
+    inputs:
+      godot_repo:
+        description: Git repository URL containing Godot source
+        required: true
+        default: https://github.com/godotengine/godot.git
+      godot_ref:
+        description: Branch, tag, or commit SHA to build
+        required: true
+        default: master
+      build_name:
+        description: Build identifier (appears in version string and filenames)
+        required: true
+        default: custom
+      version_status:
+        description: Version status (stable, rc1, beta1, dev, etc.)
+        required: true
+        default: dev
+      dotnet_enabled:
+        description: Enable .NET/C# support
+        required: true
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      platforms:
+        description: Comma-separated list of editor platforms to build (windows,macos,linux)
+        required: true
+        default: windows,macos,linux
+      build_web_templates:
+        description: Build web export templates (allows exporting projects to run in browser)
+        required: true
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      build_platform_templates:
+        description: Build native platform export templates
+        required: true
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+      lto_mode:
+        description: Link-time optimisation level
+        required: true
+        default: thin
+        type: choice
+        options: [none, thin, full]
+      godot_source_subdir:
+        description: Subdirectory within the repo containing the Godot source root (leave empty if repo root is the Godot source)
+        required: false
+        default: ''
+      dry_run:
+        description: Skip the release upload step
+        required: true
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+
+concurrency:
+  group: build-godot-${{ github.ref }}-${{ github.event.inputs.godot_ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_SRC: godot-src
+  BUILD_NAME: ${{ github.event.inputs.build_name }}
+  GODOT_VERSION_STATUS: ${{ github.event.inputs.version_status }}
+
+# ---------------------------------------------------------------------------
+# PHASE 1 — Editor builds (parallel per platform)
+# ---------------------------------------------------------------------------
+jobs:
+
+  # ── Windows editor ─────────────────────────────────────────────────────────
+  build-windows-editor:
+    if: contains(github.event.inputs.platforms, 'windows')
+    runs-on: windows-latest
+
+    env:
+      SCONS_FLAGS: >-
+        ccflags="/O2 /Ob3 /GL /sdl- /GS- /arch:SSE4.2 /MP /DNDEBUG"
+        linkflags="/LTCG /OPT:REF /OPT:ICF"
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Set Up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
+        with:
+          python-version: 3.x
+
+      - name: Install SCons
+        run: pip install scons
+
+      - name: Install Direct3D 12 SDK
+        run: python ${{ env.GODOT_SRC }}\misc\scripts\install_d3d12_sdk_windows.py
+
+      - name: Conditionally Install ANGLE
+        shell: bash
+        run: |
+          if [[ -f "$GODOT_SRC/misc/scripts/install_angle.py" ]]; then
+            python "$GODOT_SRC/misc/scripts/install_angle.py"
+            echo "ANGLE_FLAG=angle=yes" >> "$GITHUB_ENV"
+          else
+            echo "::warning::install_angle.py not found — building with angle=no"
+            echo "ANGLE_FLAG=angle=no" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Windows Editor
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=windows
+          target=editor
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          ${{ env.ANGLE_FLAG }}
+          ${{ env.SCONS_FLAGS }}
+
+      - name: Generate Mono Glue
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: >-
+          cmd /c "${{ env.GODOT_SRC }}\bin\godot.windows.editor.x86_64.mono
+          --headless --quit
+          --generate-mono-glue ${{ env.GODOT_SRC }}\bin\glue"
+
+      - name: Save Version
+        run: >-
+          cmd /c "${{ env.GODOT_SRC }}\bin\godot.windows.editor.x86_64.mono
+          --headless --quit --version
+          > ${{ env.GODOT_SRC }}\bin\version.txt"
+
+      - name: Upload Windows Editor Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.windows.editor.${{ env.BUILD_NAME }}
+          retention-days: 1
+          path: |
+            ${{ env.GODOT_SRC }}\bin\*.exe
+            ${{ env.GODOT_SRC }}\bin\version.txt
+            ${{ env.GODOT_SRC }}\bin\glue\**
+
+
+  # ── macOS editor — x86_64 ─────────────────────────────────────────────────
+  build-macos-editor-x86_64:
+    if: contains(github.event.inputs.platforms, 'macos')
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Set Up SCons
+        uses: ./.github/actions/setup-scons
+
+      - name: Install Vulkan SDK
+        run: |
+          chmod +x ${{ env.GODOT_SRC }}/misc/scripts/install_vulkan_sdk_macos.sh
+          bash ${{ env.GODOT_SRC }}/misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Conditionally Install ANGLE
+        run: |
+          if [[ -f "$GODOT_SRC/misc/scripts/install_angle.py" ]]; then
+            python ${{ env.GODOT_SRC }}/misc/scripts/install_angle.py
+            echo "ANGLE_FLAG=angle=yes" >> "$GITHUB_ENV"
+          else
+            echo "::warning::install_angle.py not found — building with angle=no"
+            echo "ANGLE_FLAG=angle=no" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build macOS Editor (x86_64)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=macos arch=x86_64 target=editor
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          accesskit=no optimize=speed
+          ${{ env.ANGLE_FLAG }}
+
+      - name: Upload x86_64 Editor Binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.macos.editor.${{ env.BUILD_NAME }}.x86_64
+          retention-days: 1
+          path: ${{ env.GODOT_SRC }}/bin/godot.macos.editor.x86_64.mono
+
+
+  # ── macOS editor — arm64 ──────────────────────────────────────────────────
+  build-macos-editor-arm64:
+    if: contains(github.event.inputs.platforms, 'macos')
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Set Up SCons
+        uses: ./.github/actions/setup-scons
+
+      - name: Install Vulkan SDK
+        run: |
+          chmod +x ${{ env.GODOT_SRC }}/misc/scripts/install_vulkan_sdk_macos.sh
+          bash ${{ env.GODOT_SRC }}/misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Conditionally Install ANGLE
+        run: |
+          if [[ -f "$GODOT_SRC/misc/scripts/install_angle.py" ]]; then
+            python ${{ env.GODOT_SRC }}/misc/scripts/install_angle.py
+            echo "ANGLE_FLAG=angle=yes" >> "$GITHUB_ENV"
+          else
+            echo "::warning::install_angle.py not found — building with angle=no"
+            echo "ANGLE_FLAG=angle=no" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build macOS Editor (arm64)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=macos arch=arm64 target=editor
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          accesskit=no optimize=speed
+          ${{ env.ANGLE_FLAG }}
+
+      - name: Upload arm64 Editor Binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.macos.editor.${{ env.BUILD_NAME }}.arm64
+          retention-days: 1
+          path: ${{ env.GODOT_SRC }}/bin/godot.macos.editor.arm64.mono
+
+
+  # ── macOS editor — universal bundle (lipo + .app + mono glue) ────────────
+  build-macos-editor-universal:
+    if: contains(github.event.inputs.platforms, 'macos')
+    runs-on: macos-latest
+    needs: [build-macos-editor-x86_64, build-macos-editor-arm64]
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Set Up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
+        with:
+          python-version: 3.x
+
+      - name: Download x86_64 Editor Binary
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.macos.editor.${{ env.BUILD_NAME }}.x86_64
+          path: ${{ env.GODOT_SRC }}/bin
+
+      - name: Download arm64 Editor Binary
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.macos.editor.${{ env.BUILD_NAME }}.arm64
+          path: ${{ env.GODOT_SRC }}/bin
+
+      - name: Create Universal Binary
+        run: |
+          lipo -create \
+            ${{ env.GODOT_SRC }}/bin/godot.macos.editor.x86_64.mono \
+            ${{ env.GODOT_SRC }}/bin/godot.macos.editor.arm64.mono \
+            -output ${{ env.GODOT_SRC }}/bin/godot.macos.editor.universal.mono
+
+      - name: Create .app Bundle
+        run: |
+          cp -r ${{ env.GODOT_SRC }}/misc/dist/macos_tools.app \
+                ${{ env.GODOT_SRC }}/bin/Godot.app
+          mkdir -p ${{ env.GODOT_SRC }}/bin/Godot.app/Contents/MacOS
+          cp ${{ env.GODOT_SRC }}/bin/godot.macos.editor.universal.mono \
+             ${{ env.GODOT_SRC }}/bin/Godot.app/Contents/MacOS/Godot
+          chmod +x ${{ env.GODOT_SRC }}/bin/Godot.app/Contents/MacOS/Godot
+
+      - name: Generate Mono Glue
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: |
+          ${{ env.GODOT_SRC }}/bin/Godot.app/Contents/MacOS/Godot \
+            --headless --quit \
+            --generate-mono-glue ${{ env.GODOT_SRC }}/bin/glue
+
+      - name: Build Mono Assemblies
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: |
+          python ${{ env.GODOT_SRC }}/modules/mono/build_scripts/build_assemblies.py \
+            --godot-output-dir=${{ env.GODOT_SRC }}/bin \
+            --push-nupkgs-local ${{ env.GODOT_SRC }}/bin/nuget
+
+      - name: Place GodotSharp Inside .app Bundle
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: |
+          # The Godot docs require GodotSharp to live inside Contents/Resources/
+          # so the editor can locate its managed assemblies at runtime.
+          mkdir -p ${{ env.GODOT_SRC }}/bin/Godot.app/Contents/Resources
+          cp -r ${{ env.GODOT_SRC }}/bin/GodotSharp \
+                ${{ env.GODOT_SRC }}/bin/Godot.app/Contents/Resources/GodotSharp
+
+      - name: Code Sign .app Bundle
+        run: |
+          # Ad-hoc signing: --options=runtime enables hardened runtime (required for entitlements).
+          # --deep and --timestamp are intentionally omitted: --deep is deprecated by Apple and
+          # --timestamp requires a real Developer ID identity (not available in CI).
+          codesign --force --options=runtime \
+            --entitlements ${{ env.GODOT_SRC }}/misc/dist/macos/editor.entitlements \
+            -s - \
+            ${{ env.GODOT_SRC }}/bin/Godot.app
+
+      - name: Save Version
+        run: |
+          ${{ env.GODOT_SRC }}/bin/Godot.app/Contents/MacOS/Godot \
+            --headless --quit --version \
+            > ${{ env.GODOT_SRC }}/bin/version.txt
+          cat ${{ env.GODOT_SRC }}/bin/version.txt
+
+      - name: Upload macOS Editor Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.macos.editor.${{ env.BUILD_NAME }}
+          retention-days: 1
+          path: |
+            ${{ env.GODOT_SRC }}/bin/Godot.app
+            ${{ env.GODOT_SRC }}/bin/version.txt
+            ${{ env.GODOT_SRC }}/bin/glue/**
+            ${{ env.GODOT_SRC }}/bin/nuget/**
+
+
+  # ── Linux editor ──────────────────────────────────────────────────────────
+  build-linux-editor:
+    if: contains(github.event.inputs.platforms, 'linux')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y \
+            build-essential scons pkg-config \
+            libx11-dev libxcursor-dev libxinerama-dev \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libasound2-dev libpulse-dev \
+            libudev-dev libxi-dev libxrandr-dev \
+            libwayland-dev
+
+      - name: Set Up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
+        with:
+          python-version: 3.x
+
+      - name: Build Linux Editor
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=linuxbsd target=editor
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+
+      - name: Generate Mono Glue
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: |
+          ${{ env.GODOT_SRC }}/bin/godot.linuxbsd.editor.x86_64.mono \
+            --headless --quit \
+            --generate-mono-glue ${{ env.GODOT_SRC }}/bin/glue
+
+      - name: Build Mono Assemblies
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: |
+          python ${{ env.GODOT_SRC }}/modules/mono/build_scripts/build_assemblies.py \
+            --godot-output-dir=${{ env.GODOT_SRC }}/bin \
+            --push-nupkgs-local ${{ env.GODOT_SRC }}/bin/nuget
+
+      - name: Save Version
+        run: |
+          ${{ env.GODOT_SRC }}/bin/godot.linuxbsd.editor.x86_64.mono \
+            --headless --quit --version \
+            > ${{ env.GODOT_SRC }}/bin/version.txt
+          cat ${{ env.GODOT_SRC }}/bin/version.txt
+
+      - name: Upload Linux Editor Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.linux.editor.${{ env.BUILD_NAME }}
+          retention-days: 1
+          path: |
+            ${{ env.GODOT_SRC }}/bin/godot.linuxbsd.editor.x86_64.mono
+            ${{ env.GODOT_SRC }}/bin/version.txt
+            ${{ env.GODOT_SRC }}/bin/glue/**
+            ${{ env.GODOT_SRC }}/bin/nuget/**
+
+
+# ---------------------------------------------------------------------------
+# PHASE 2a — Web export templates (one set; glue is platform-agnostic)
+# Uses the Windows editor artifact if available, macOS otherwise, Linux last.
+# ---------------------------------------------------------------------------
+
+  build-web-template-release:
+    # Run if web templates requested and at least one editor job succeeded.
+    # always() is required so this job is not skipped when sibling editor jobs are skipped.
+    if: |
+      always() &&
+      github.event.inputs.build_web_templates == 'true' && (
+        needs.build-windows-editor.result == 'success' ||
+        needs.build-macos-editor-universal.result == 'success' ||
+        needs.build-linux-editor.result == 'success'
+      )
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows-editor
+      - build-macos-editor-universal
+      - build-linux-editor
+
+    env:
+      SCONS_FLAGS: >-
+        optimize=speed
+        ccflags="-DNDEBUG"
+        linkflags="-sMALLOC=mimalloc"
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Resolve Editor Artifact Name
+        id: editor-artifact
+        run: |
+          # Prefer Windows glue; fall back to macOS then Linux
+          if [[ "${{ needs.build-windows-editor.result }}" == "success" ]]; then
+            echo "name=godot.windows.editor.${{ env.BUILD_NAME }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ needs.build-macos-editor-universal.result }}" == "success" ]]; then
+            echo "name=godot.macos.editor.${{ env.BUILD_NAME }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=godot.linux.editor.${{ env.BUILD_NAME }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set Up Web Export Template Dependencies
+        uses: ./.github/actions/web-template-deps
+        with:
+          editor-artifact-name: ${{ steps.editor-artifact.outputs.name }}
+          godot_source_dir: ${{ env.GODOT_SRC }}
+          nuget_output_dir: ${{ env.GODOT_SRC }}/bin/nuget
+
+      - name: Build Web Template (Release)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=web target=template_release
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          lto=${{ github.event.inputs.lto_mode }}
+          ${{ env.SCONS_FLAGS }}
+
+      - name: Upload Web Release Template Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.web.template_release.${{ env.BUILD_NAME }}
+          retention-days: 1
+          path: |
+            ${{ env.GODOT_SRC }}/bin/godot.web.template_release.wasm32.mono.zip
+            ${{ env.GODOT_SRC }}/bin/GodotSharp/**
+            ${{ env.GODOT_SRC }}/bin/nuget/**
+
+
+  build-web-template-debug:
+    if: |
+      always() &&
+      github.event.inputs.build_web_templates == 'true' && (
+        needs.build-windows-editor.result == 'success' ||
+        needs.build-macos-editor-universal.result == 'success' ||
+        needs.build-linux-editor.result == 'success'
+      )
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows-editor
+      - build-macos-editor-universal
+      - build-linux-editor
+
+    env:
+      # Use lto=thin for debug regardless of lto_mode — full LTO needs ~30 GB RAM
+      SCONS_FLAGS: >-
+        optimize=speed
+        lto=thin
+        ccflags="-DNDEBUG"
+        linkflags="-sMALLOC=mimalloc"
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Resolve Editor Artifact Name
+        id: editor-artifact
+        run: |
+          if [[ "${{ needs.build-windows-editor.result }}" == "success" ]]; then
+            echo "name=godot.windows.editor.${{ env.BUILD_NAME }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ needs.build-macos-editor-universal.result }}" == "success" ]]; then
+            echo "name=godot.macos.editor.${{ env.BUILD_NAME }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=godot.linux.editor.${{ env.BUILD_NAME }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set Up Web Export Template Dependencies
+        uses: ./.github/actions/web-template-deps
+        with:
+          editor-artifact-name: ${{ steps.editor-artifact.outputs.name }}
+          godot_source_dir: ${{ env.GODOT_SRC }}
+          nuget_output_dir: ${{ env.GODOT_SRC }}/bin/nuget
+
+      - name: Build Web Template (Debug)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=web target=template_debug
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          ${{ env.SCONS_FLAGS }}
+
+      - name: Upload Web Debug Template Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.web.template_debug.${{ env.BUILD_NAME }}
+          retention-days: 1
+          path: ${{ env.GODOT_SRC }}/bin/godot.web.template_debug.wasm32.mono.zip
+
+
+# ---------------------------------------------------------------------------
+# PHASE 2b — Native platform export templates (optional)
+# ---------------------------------------------------------------------------
+
+  build-windows-templates:
+    if: |
+      github.event.inputs.build_platform_templates == 'true' &&
+      contains(github.event.inputs.platforms, 'windows') &&
+      needs.build-windows-editor.result == 'success'
+    runs-on: ubuntu-latest
+    needs: build-windows-editor
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Set Up SCons
+        uses: ./.github/actions/setup-scons
+
+      - name: Install MinGW Cross-Compiler
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y mingw-w64
+          # Ensure POSIX threading model (required by Godot)
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc \
+            /usr/bin/x86_64-w64-mingw32-gcc-posix || true
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ \
+            /usr/bin/x86_64-w64-mingw32-g++-posix || true
+
+      - name: Download Windows Editor Artifact (for glue)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.windows.editor.${{ env.BUILD_NAME }}
+          path: ${{ env.GODOT_SRC }}/bin
+
+      - name: Copy Mono Glue
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: |
+          cp -rf ${{ env.GODOT_SRC }}/bin/glue/. \
+                 ${{ env.GODOT_SRC }}/modules/mono/glue
+
+      - name: Build Windows Template (Release)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=windows target=template_release arch=x86_64
+          use_mingw=yes
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          optimize=speed lto=${{ github.event.inputs.lto_mode }}
+
+      - name: Build Windows Template (Debug)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=windows target=template_debug arch=x86_64
+          use_mingw=yes
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          optimize=speed lto=thin
+
+      - name: Upload Windows Templates Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.windows.templates.${{ env.BUILD_NAME }}
+          retention-days: 1
+          path: |
+            ${{ env.GODOT_SRC }}/bin/godot.windows.template_release.x86_64.exe
+            ${{ env.GODOT_SRC }}/bin/godot.windows.template_release.x86_64.console.exe
+            ${{ env.GODOT_SRC }}/bin/godot.windows.template_debug.x86_64.exe
+            ${{ env.GODOT_SRC }}/bin/godot.windows.template_debug.x86_64.console.exe
+
+
+  build-macos-templates-x86_64:
+    if: |
+      github.event.inputs.build_platform_templates == 'true' &&
+      contains(github.event.inputs.platforms, 'macos')
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Set Up SCons
+        uses: ./.github/actions/setup-scons
+
+      - name: Install Vulkan SDK
+        run: |
+          chmod +x ${{ env.GODOT_SRC }}/misc/scripts/install_vulkan_sdk_macos.sh
+          bash ${{ env.GODOT_SRC }}/misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Build macOS Template Release (x86_64)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=macos arch=x86_64 target=template_release
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          accesskit=no optimize=speed lto=${{ github.event.inputs.lto_mode }}
+
+      - name: Build macOS Template Debug (x86_64)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=macos arch=x86_64 target=template_debug
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          accesskit=no optimize=speed lto=thin
+
+      - name: Upload macOS x86_64 Template Binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.macos.templates.${{ env.BUILD_NAME }}.x86_64
+          retention-days: 1
+          path: |
+            ${{ env.GODOT_SRC }}/bin/godot.macos.template_release.x86_64.mono
+            ${{ env.GODOT_SRC }}/bin/godot.macos.template_debug.x86_64.mono
+
+
+  build-macos-templates-arm64:
+    if: |
+      github.event.inputs.build_platform_templates == 'true' &&
+      contains(github.event.inputs.platforms, 'macos')
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Set Up SCons
+        uses: ./.github/actions/setup-scons
+
+      - name: Install Vulkan SDK
+        run: |
+          chmod +x ${{ env.GODOT_SRC }}/misc/scripts/install_vulkan_sdk_macos.sh
+          bash ${{ env.GODOT_SRC }}/misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Build macOS Template Release (arm64)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=macos arch=arm64 target=template_release
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          accesskit=no optimize=speed lto=${{ github.event.inputs.lto_mode }}
+
+      - name: Build macOS Template Debug (arm64)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=macos arch=arm64 target=template_debug
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          accesskit=no optimize=speed lto=thin
+
+      - name: Upload macOS arm64 Template Binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.macos.templates.${{ env.BUILD_NAME }}.arm64
+          retention-days: 1
+          path: |
+            ${{ env.GODOT_SRC }}/bin/godot.macos.template_release.arm64.mono
+            ${{ env.GODOT_SRC }}/bin/godot.macos.template_debug.arm64.mono
+
+
+  build-macos-templates-universal:
+    if: |
+      github.event.inputs.build_platform_templates == 'true' &&
+      contains(github.event.inputs.platforms, 'macos')
+    runs-on: macos-latest
+    needs: [build-macos-templates-x86_64, build-macos-templates-arm64]
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Download x86_64 Template Binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.macos.templates.${{ env.BUILD_NAME }}.x86_64
+          path: ${{ env.GODOT_SRC }}/bin
+
+      - name: Download arm64 Template Binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.macos.templates.${{ env.BUILD_NAME }}.arm64
+          path: ${{ env.GODOT_SRC }}/bin
+
+      - name: Create Universal Template Binaries
+        run: |
+          lipo -create \
+            ${{ env.GODOT_SRC }}/bin/godot.macos.template_release.x86_64.mono \
+            ${{ env.GODOT_SRC }}/bin/godot.macos.template_release.arm64.mono \
+            -output ${{ env.GODOT_SRC }}/bin/godot.macos.template_release.universal.mono
+
+          lipo -create \
+            ${{ env.GODOT_SRC }}/bin/godot.macos.template_debug.x86_64.mono \
+            ${{ env.GODOT_SRC }}/bin/godot.macos.template_debug.arm64.mono \
+            -output ${{ env.GODOT_SRC }}/bin/godot.macos.template_debug.universal.mono
+
+      - name: Create Template .app Bundles
+        run: |
+          cp -r ${{ env.GODOT_SRC }}/misc/dist/macos_template.app \
+                ${{ env.GODOT_SRC }}/bin/macos_template_release.app
+          mkdir -p ${{ env.GODOT_SRC }}/bin/macos_template_release.app/Contents/MacOS
+          cp ${{ env.GODOT_SRC }}/bin/godot.macos.template_release.universal.mono \
+             ${{ env.GODOT_SRC }}/bin/macos_template_release.app/Contents/MacOS/godot
+          chmod +x ${{ env.GODOT_SRC }}/bin/macos_template_release.app/Contents/MacOS/godot
+
+          cp -r ${{ env.GODOT_SRC }}/misc/dist/macos_template.app \
+                ${{ env.GODOT_SRC }}/bin/macos_template_debug.app
+          mkdir -p ${{ env.GODOT_SRC }}/bin/macos_template_debug.app/Contents/MacOS
+          cp ${{ env.GODOT_SRC }}/bin/godot.macos.template_debug.universal.mono \
+             ${{ env.GODOT_SRC }}/bin/macos_template_debug.app/Contents/MacOS/godot
+          chmod +x ${{ env.GODOT_SRC }}/bin/macos_template_debug.app/Contents/MacOS/godot
+
+      - name: Code Sign Template Bundles
+        run: |
+          codesign --force --options=runtime \
+            --entitlements ${{ env.GODOT_SRC }}/misc/dist/macos/template.entitlements \
+            -s - \
+            ${{ env.GODOT_SRC }}/bin/macos_template_release.app
+
+          codesign --force --options=runtime \
+            --entitlements ${{ env.GODOT_SRC }}/misc/dist/macos/template.entitlements \
+            -s - \
+            ${{ env.GODOT_SRC }}/bin/macos_template_debug.app
+
+      - name: Upload macOS Universal Template Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.macos.templates.${{ env.BUILD_NAME }}.universal
+          retention-days: 1
+          path: |
+            ${{ env.GODOT_SRC }}/bin/macos_template_release.app
+            ${{ env.GODOT_SRC }}/bin/macos_template_debug.app
+
+
+  build-linux-templates:
+    if: |
+      github.event.inputs.build_platform_templates == 'true' &&
+      contains(github.event.inputs.platforms, 'linux') &&
+      needs.build-linux-editor.result == 'success'
+    runs-on: ubuntu-latest
+    needs: build-linux-editor
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Set Up Godot Source
+        uses: ./.github/actions/setup-godot-source
+        with:
+          godot_repo: ${{ github.event.inputs.godot_repo }}
+          godot_ref: ${{ github.event.inputs.godot_ref }}
+          godot_source_subdir: ${{ github.event.inputs.godot_source_subdir }}
+          destination: ${{ env.GODOT_SRC }}
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y \
+            build-essential scons pkg-config \
+            libx11-dev libxcursor-dev libxinerama-dev \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libasound2-dev libpulse-dev \
+            libudev-dev libxi-dev libxrandr-dev \
+            libwayland-dev
+
+      - name: Set Up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
+        with:
+          python-version: 3.x
+
+      - name: Download Linux Editor Artifact (for glue)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.linux.editor.${{ env.BUILD_NAME }}
+          path: ${{ env.GODOT_SRC }}/bin
+
+      - name: Copy Mono Glue
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: |
+          cp -rf ${{ env.GODOT_SRC }}/bin/glue/. \
+                 ${{ env.GODOT_SRC }}/modules/mono/glue
+
+      - name: Build Linux Template (Release)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=linuxbsd target=template_release arch=x86_64
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          optimize=speed lto=${{ github.event.inputs.lto_mode }}
+
+      - name: Build Linux Template (Debug)
+        run: >-
+          scons -C ${{ env.GODOT_SRC }}
+          platform=linuxbsd target=template_debug arch=x86_64
+          ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
+          optimize=speed lto=thin
+
+      - name: Upload Linux Templates Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: godot.linux.templates.${{ env.BUILD_NAME }}
+          retention-days: 1
+          path: |
+            ${{ env.GODOT_SRC }}/bin/godot.linuxbsd.template_release.x86_64.mono
+            ${{ env.GODOT_SRC }}/bin/godot.linuxbsd.template_debug.x86_64.mono
+
+
+# ---------------------------------------------------------------------------
+# PHASE 3 — Package (per platform)
+# ---------------------------------------------------------------------------
+
+  package-windows:
+    if: |
+      always() &&
+      contains(github.event.inputs.platforms, 'windows') &&
+      needs.build-windows-editor.result == 'success'
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows-editor
+      - build-web-template-release
+      - build-web-template-debug
+      - build-windows-templates
+
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      status: ${{ steps.meta.outputs.status }}
+      filename: ${{ steps.meta.outputs.filename }}
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Download Windows Editor Artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.windows.editor.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Download Web Release Template
+        if: needs.build-web-template-release.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.web.template_release.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Download Web Debug Template
+        if: needs.build-web-template-debug.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.web.template_debug.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Download Windows Native Templates
+        if: needs.build-windows-templates.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.windows.templates.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Prepare Package
+        id: meta
+        run: |
+          version_output=$(tr -d '\r\n' < dist/bin/version.txt)
+          if [[ $version_output =~ ^([0-9.]+)\.([^0-9.][^.]*)\.(mono\.)?(.+)\.([^.]+)$ ]]; then
+            version=${BASH_REMATCH[1]}
+            status=${BASH_REMATCH[2]}
+            mono=${BASH_REMATCH[3]}
+            build_name=${BASH_REMATCH[4]}
+            hash=${BASH_REMATCH[5]}
+          else
+            version=$(echo "$version_output" | cut -d. -f1-3)
+            status="${{ env.GODOT_VERSION_STATUS }}"
+            build_name="${{ env.BUILD_NAME }}"
+            hash=$(echo "$version_output" | rev | cut -d. -f1 | rev)
+          fi
+
+          filename="Godot_v${version}-${status}_${mono//./_}${build_name//./_}_win64"
+          mkdir -p "$filename"
+
+          mv dist/bin/godot.windows.editor.x86_64.mono.exe     "${filename}/${filename}.exe"         2>/dev/null || true
+          mv dist/bin/godot.windows.editor.x86_64.mono.console.exe "${filename}/${filename}_console.exe" 2>/dev/null || true
+          [[ -d dist/bin/GodotSharp ]] && mv dist/bin/GodotSharp "$filename/"
+          [[ -d dist/bin/nuget      ]] && mv dist/bin/nuget      "$filename/"
+          mv dist/bin/godot.web.template_release.wasm32.mono.zip "${filename}/web_release.zip" 2>/dev/null || true
+          mv dist/bin/godot.web.template_debug.wasm32.mono.zip   "${filename}/web_debug.zip"   2>/dev/null || true
+
+          # Windows native templates
+          for f in dist/bin/godot.windows.template_*.exe; do
+            [[ -f "$f" ]] && mv "$f" "$filename/" || true
+          done
+
+          echo "version=${version}"   >> "$GITHUB_OUTPUT"
+          echo "status=${status}"     >> "$GITHUB_OUTPUT"
+          echo "filename=${filename}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Install Script (install.bat)
+        run: |
+          cat > "${{ steps.meta.outputs.filename }}/install.bat" << 'BATCHEOF'
+          @echo off
+          echo Installing Godot ${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.status }}...
+          echo.
+
+          set TEMPLATE_FOLDER=%AppData%\Godot\export_templates\${{ steps.meta.outputs.version }}.${{ steps.meta.outputs.status }}.mono
+          set NUGET_FOLDER=%AppData%\NuGet\nuget
+
+          if exist "%~dp0web_release.zip" (
+            echo Moving web export templates to '%TEMPLATE_FOLDER%'...
+            md "%TEMPLATE_FOLDER%"
+            move /y "%~dp0web_release.zip" "%TEMPLATE_FOLDER%"
+            move /y "%~dp0web_debug.zip"   "%TEMPLATE_FOLDER%"
+          )
+
+          if exist "%~dp0nuget" (
+            echo Moving NuGet packages to '%NUGET_FOLDER%'...
+            dotnet nuget add source "%NUGET_FOLDER%" --name GodotNuGetSource
+            md "%NUGET_FOLDER%"
+            move /y "%~dp0nuget\*" "%NUGET_FOLDER%"
+            rd "%~dp0nuget"
+          )
+
+          echo Attempting to install wasm-tools...
+          if exist "%~dp0global.json" ren "%~dp0global.json" global.json.disabled
+          dotnet workload install wasm-tools
+          if exist "%~dp0global.json.disabled" (
+            ren "%~dp0global.json.disabled" global.json
+            dotnet workload install wasm-tools
+          )
+
+          echo.
+          echo Installation complete!
+          pause
+          BATCHEOF
+
+      - name: Create Zip Archive
+        run: 7z a ${{ steps.meta.outputs.filename }}.zip ${{ steps.meta.outputs.filename }} -r -mm=Deflate64 -mx=9
+
+      - name: Upload Windows Package Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: ${{ steps.meta.outputs.filename }}.artifact
+          retention-days: 90
+          path: ${{ steps.meta.outputs.filename }}.zip
+
+
+  package-macos:
+    # Must run on macos-latest: ditto is required to preserve .app bundle metadata.
+    # Using zip on Linux strips resource forks and code signatures.
+    if: |
+      always() &&
+      contains(github.event.inputs.platforms, 'macos') &&
+      needs.build-macos-editor-universal.result == 'success'
+    runs-on: macos-latest
+    needs:
+      - build-macos-editor-universal
+      - build-web-template-release
+      - build-web-template-debug
+      - build-macos-templates-universal
+
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      status: ${{ steps.meta.outputs.status }}
+      filename: ${{ steps.meta.outputs.filename }}
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Download macOS Editor Artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.macos.editor.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Download Web Release Template
+        if: needs.build-web-template-release.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.web.template_release.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Download Web Debug Template
+        if: needs.build-web-template-debug.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.web.template_debug.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Download macOS Universal Templates
+        if: needs.build-macos-templates-universal.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.macos.templates.${{ env.BUILD_NAME }}.universal
+          path: dist/templates
+
+      - name: Prepare Package
+        id: meta
+        run: |
+          set -euo pipefail
+          version_output=$(tr -d '\r\n' < dist/bin/version.txt)
+          if [[ $version_output =~ ^([0-9.]+)\.([^0-9.][^.]*)\.(mono\.)?(.+)\.([^.]+)$ ]]; then
+            version=${BASH_REMATCH[1]}
+            status=${BASH_REMATCH[2]}
+            mono=${BASH_REMATCH[3]}
+            build_name=${BASH_REMATCH[4]}
+          else
+            version=$(echo "$version_output" | cut -d. -f1-3)
+            status="${{ env.GODOT_VERSION_STATUS }}"
+            mono="mono."
+            build_name="${{ env.BUILD_NAME }}"
+          fi
+
+          filename="Godot_v${version}-${status}_${mono//./_}${build_name//./_}_macos_universal2"
+          mkdir -p "$filename"
+
+          cp -r dist/bin/Godot.app "$filename/"
+          [[ -d dist/bin/nuget ]] && mv dist/bin/nuget "$filename/"
+          mv dist/bin/godot.web.template_release.wasm32.mono.zip "${filename}/web_release.zip" 2>/dev/null || true
+          mv dist/bin/godot.web.template_debug.wasm32.mono.zip   "${filename}/web_debug.zip"   2>/dev/null || true
+          [[ -d dist/templates ]] && cp -r dist/templates/. "$filename/templates/" || true
+
+          echo "version=${version}"   >> "$GITHUB_OUTPUT"
+          echo "status=${status}"     >> "$GITHUB_OUTPUT"
+          echo "filename=${filename}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Install Script (install.sh)
+        run: |
+          cat > "${{ steps.meta.outputs.filename }}/install.sh" << 'SHEOF'
+          #!/bin/bash
+          set -e
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+          echo "Installing Godot ${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.status }}..."
+          echo
+
+          TEMPLATE_FOLDER="$HOME/Library/Application Support/Godot/export_templates/${{ steps.meta.outputs.version }}.${{ steps.meta.outputs.status }}.mono"
+          NUGET_FOLDER="$HOME/.nuget/packages"
+
+          if [[ -f "$SCRIPT_DIR/web_release.zip" ]]; then
+            echo "Installing web export templates to '$TEMPLATE_FOLDER'..."
+            mkdir -p "$TEMPLATE_FOLDER"
+            mv "$SCRIPT_DIR/web_release.zip" "$TEMPLATE_FOLDER/"
+            mv "$SCRIPT_DIR/web_debug.zip"   "$TEMPLATE_FOLDER/" 2>/dev/null || true
+          fi
+
+          if [[ -d "$SCRIPT_DIR/nuget" ]]; then
+            echo "Installing NuGet packages to '$NUGET_FOLDER'..."
+            mkdir -p "$NUGET_FOLDER"
+            cp -R "$SCRIPT_DIR/nuget/." "$NUGET_FOLDER/"
+            rm -rf "$SCRIPT_DIR/nuget"
+          fi
+
+          if [[ -d "$SCRIPT_DIR/templates" ]]; then
+            echo "Installing macOS export templates..."
+            mkdir -p "$TEMPLATE_FOLDER"
+            cp -r "$SCRIPT_DIR/templates/." "$TEMPLATE_FOLDER/"
+          fi
+
+          echo "Attempting to install wasm-tools..."
+          if [[ -f "$SCRIPT_DIR/global.json" ]]; then
+            mv "$SCRIPT_DIR/global.json" "$SCRIPT_DIR/global.json.disabled"
+          fi
+          dotnet workload install wasm-tools
+          if [[ -f "$SCRIPT_DIR/global.json.disabled" ]]; then
+            mv "$SCRIPT_DIR/global.json.disabled" "$SCRIPT_DIR/global.json"
+            dotnet workload install wasm-tools
+          fi
+
+          # Remove quarantine flag so Gatekeeper does not block the downloaded .app
+          xattr -dr com.apple.quarantine "$SCRIPT_DIR/Godot.app" || true
+
+          echo
+          echo "Installation complete!"
+          echo "Open Godot.app to start the editor."
+          SHEOF
+          chmod +x "${{ steps.meta.outputs.filename }}/install.sh"
+
+      - name: Create Zip Archive (ditto preserves .app metadata)
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "${{ steps.meta.outputs.filename }}" \
+            "${{ steps.meta.outputs.filename }}.zip"
+
+      - name: Upload macOS Package Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: ${{ steps.meta.outputs.filename }}.artifact
+          retention-days: 90
+          path: ${{ steps.meta.outputs.filename }}.zip
+
+
+  package-linux:
+    if: |
+      always() &&
+      contains(github.event.inputs.platforms, 'linux') &&
+      needs.build-linux-editor.result == 'success'
+    runs-on: ubuntu-latest
+    needs:
+      - build-linux-editor
+      - build-web-template-release
+      - build-web-template-debug
+      - build-linux-templates
+
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      status: ${{ steps.meta.outputs.status }}
+      filename: ${{ steps.meta.outputs.filename }}
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Download Linux Editor Artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.linux.editor.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Download Web Release Template
+        if: needs.build-web-template-release.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.web.template_release.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Download Web Debug Template
+        if: needs.build-web-template-debug.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.web.template_debug.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Download Linux Native Templates
+        if: needs.build-linux-templates.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: godot.linux.templates.${{ env.BUILD_NAME }}
+          path: dist/bin
+
+      - name: Prepare Package
+        id: meta
+        run: |
+          set -euo pipefail
+          version_output=$(tr -d '\r\n' < dist/bin/version.txt)
+          if [[ $version_output =~ ^([0-9.]+)\.([^0-9.][^.]*)\.(mono\.)?(.+)\.([^.]+)$ ]]; then
+            version=${BASH_REMATCH[1]}
+            status=${BASH_REMATCH[2]}
+            mono=${BASH_REMATCH[3]}
+            build_name=${BASH_REMATCH[4]}
+          else
+            version=$(echo "$version_output" | cut -d. -f1-3)
+            status="${{ env.GODOT_VERSION_STATUS }}"
+            mono="mono."
+            build_name="${{ env.BUILD_NAME }}"
+          fi
+
+          filename="Godot_v${version}-${status}_${mono//./_}${build_name//./_}_linux_x86_64"
+          mkdir -p "$filename"
+
+          mv dist/bin/godot.linuxbsd.editor.x86_64.mono "${filename}/godot.editor"
+          chmod +x "${filename}/godot.editor"
+          [[ -d dist/bin/GodotSharp ]] && mv dist/bin/GodotSharp "$filename/"
+          [[ -d dist/bin/nuget      ]] && mv dist/bin/nuget      "$filename/"
+          mv dist/bin/godot.web.template_release.wasm32.mono.zip "${filename}/web_release.zip" 2>/dev/null || true
+          mv dist/bin/godot.web.template_debug.wasm32.mono.zip   "${filename}/web_debug.zip"   2>/dev/null || true
+          mv dist/bin/godot.linuxbsd.template_release.x86_64.mono "${filename}/" 2>/dev/null || true
+          mv dist/bin/godot.linuxbsd.template_debug.x86_64.mono   "${filename}/" 2>/dev/null || true
+
+          echo "version=${version}"   >> "$GITHUB_OUTPUT"
+          echo "status=${status}"     >> "$GITHUB_OUTPUT"
+          echo "filename=${filename}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Install Script (install.sh)
+        run: |
+          cat > "${{ steps.meta.outputs.filename }}/install.sh" << 'SHEOF'
+          #!/bin/bash
+          set -e
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+          echo "Installing Godot ${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.status }}..."
+          echo
+
+          TEMPLATE_FOLDER="$HOME/.local/share/godot/export_templates/${{ steps.meta.outputs.version }}.${{ steps.meta.outputs.status }}.mono"
+          NUGET_FOLDER="$HOME/.nuget/packages"
+
+          if [[ -f "$SCRIPT_DIR/web_release.zip" ]]; then
+            echo "Installing web export templates to '$TEMPLATE_FOLDER'..."
+            mkdir -p "$TEMPLATE_FOLDER"
+            mv "$SCRIPT_DIR/web_release.zip" "$TEMPLATE_FOLDER/"
+            mv "$SCRIPT_DIR/web_debug.zip"   "$TEMPLATE_FOLDER/" 2>/dev/null || true
+          fi
+
+          for tmpl in "$SCRIPT_DIR"/godot.linuxbsd.template_*.mono; do
+            [[ -f "$tmpl" ]] || continue
+            fname="$(basename "$tmpl")"
+            # Rename to Godot's expected template filename format
+            target="${fname/godot.linuxbsd.template_release/linux_release}"
+            target="${target/godot.linuxbsd.template_debug/linux_debug}"
+            target="${target/.x86_64.mono/.x86_64}"
+            echo "Installing $fname -> $TEMPLATE_FOLDER/$target"
+            mkdir -p "$TEMPLATE_FOLDER"
+            mv "$tmpl" "$TEMPLATE_FOLDER/$target"
+          done
+
+          if [[ -d "$SCRIPT_DIR/nuget" ]]; then
+            echo "Installing NuGet packages to '$NUGET_FOLDER'..."
+            mkdir -p "$NUGET_FOLDER"
+            cp -R "$SCRIPT_DIR/nuget/." "$NUGET_FOLDER/"
+            rm -rf "$SCRIPT_DIR/nuget"
+          fi
+
+          echo
+          echo "Installation complete!"
+          echo "Run ./godot.editor to start the editor."
+          SHEOF
+          chmod +x "${{ steps.meta.outputs.filename }}/install.sh"
+
+      - name: Create tar.gz Archive
+        run: tar -czf ${{ steps.meta.outputs.filename }}.tar.gz ${{ steps.meta.outputs.filename }}
+
+      - name: Upload Linux Package Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: ${{ steps.meta.outputs.filename }}.artifact
+          retention-days: 90
+          path: ${{ steps.meta.outputs.filename }}.tar.gz
+
+
+# ---------------------------------------------------------------------------
+# PHASE 4 — Release
+# ---------------------------------------------------------------------------
+
+  upload-release:
+    if: |
+      github.event.inputs.dry_run != 'true' &&
+      always() && (
+        needs.package-windows.result == 'success' ||
+        needs.package-macos.result == 'success' ||
+        needs.package-linux.result == 'success'
+      )
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    needs:
+      - package-windows
+      - package-macos
+      - package-linux
+
+    steps:
+      - name: Download Windows Package
+        if: needs.package-windows.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: ${{ needs.package-windows.outputs.filename }}.artifact
+
+      - name: Download macOS Package
+        if: needs.package-macos.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: ${{ needs.package-macos.outputs.filename }}.artifact
+
+      - name: Download Linux Package
+        if: needs.package-linux.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        with:
+          name: ${{ needs.package-linux.outputs.filename }}.artifact
+
+      - name: Resolve Release Metadata
+        id: release-meta
+        run: |
+          # Use whichever platform succeeded for version/status
+          version="${{ needs.package-windows.outputs.version || needs.package-macos.outputs.version || needs.package-linux.outputs.version }}"
+          status="${{ needs.package-windows.outputs.status || needs.package-macos.outputs.status || needs.package-linux.outputs.status }}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "status=${status}"   >> "$GITHUB_OUTPUT"
+          echo "prerelease=${{ github.event.inputs.version_status != 'stable' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda #v3.0.0
+        with:
+          tag_name: ${{ steps.release-meta.outputs.version }}-${{ steps.release-meta.outputs.status }}
+          target_commitish: ${{ github.ref }}
+          prerelease: ${{ steps.release-meta.outputs.prerelease }}
+          files: |
+            ${{ needs.package-windows.outputs.filename }}.zip
+            ${{ needs.package-macos.outputs.filename }}.zip
+            ${{ needs.package-linux.outputs.filename }}.tar.gz
+          body: |
+            Godot Engine ${{ steps.release-meta.outputs.version }}-${{ steps.release-meta.outputs.status }}
+            Built from: ${{ github.event.inputs.godot_repo }} @ `${{ github.event.inputs.godot_ref }}`
+
+            **Installation**
+            1. Download the archive for your platform.
+            2. Extract and run `install.bat` (Windows) or `bash install.sh` (macOS/Linux).
+            3. Open the included editor to export your project.
+
+            **Web export** — after running the install script, open your project and export to the Web platform.
