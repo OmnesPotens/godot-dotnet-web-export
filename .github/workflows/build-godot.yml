@@ -309,6 +309,12 @@ jobs:
             --headless --quit \
             --generate-mono-glue ${{ env.GODOT_SRC }}/bin/glue
 
+      - name: Copy Mono Glue to Source Tree
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: |
+          cp -rf ${{ env.GODOT_SRC }}/bin/glue/. \
+                 ${{ env.GODOT_SRC }}/modules/mono/glue
+
       - name: Build Mono Assemblies
         if: github.event.inputs.dotnet_enabled == 'true'
         run: |
@@ -399,6 +405,12 @@ jobs:
           ${{ env.GODOT_SRC }}/bin/godot.linuxbsd.editor.x86_64.mono \
             --headless --quit \
             --generate-mono-glue ${{ env.GODOT_SRC }}/bin/glue
+
+      - name: Copy Mono Glue to Source Tree
+        if: github.event.inputs.dotnet_enabled == 'true'
+        run: |
+          cp -rf ${{ env.GODOT_SRC }}/bin/glue/. \
+                 ${{ env.GODOT_SRC }}/modules/mono/glue
 
       - name: Build Mono Assemblies
         if: github.event.inputs.dotnet_enabled == 'true'
@@ -625,7 +637,7 @@ jobs:
           platform=windows target=template_release arch=x86_64
           use_mingw=yes
           ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
-          optimize=speed lto=${{ github.event.inputs.lto_mode }}
+          optimize=speed lto=${{ github.event.inputs.lto_mode == 'thin' && 'full' || github.event.inputs.lto_mode }}
 
       - name: Build Windows Template (Debug)
         run: >-
@@ -633,7 +645,7 @@ jobs:
           platform=windows target=template_debug arch=x86_64
           use_mingw=yes
           ${{ github.event.inputs.dotnet_enabled == 'true' && 'module_mono_enabled=yes' || '' }}
-          optimize=speed lto=thin
+          optimize=speed lto=none
 
       - name: Upload Windows Templates Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
@@ -808,13 +820,15 @@ jobs:
 
       - name: Code Sign Template Bundles
         run: |
+          # Export templates do not need entitlements — they are re-signed by
+          # the editor during project export with the final app's entitlements.
+          # The file misc/dist/macos/template.entitlements does not exist in
+          # the Godot source tree; only editor.entitlements is provided.
           codesign --force --options=runtime \
-            --entitlements ${{ env.GODOT_SRC }}/misc/dist/macos/template.entitlements \
             -s - \
             ${{ env.GODOT_SRC }}/bin/macos_template_release.app
 
           codesign --force --options=runtime \
-            --entitlements ${{ env.GODOT_SRC }}/misc/dist/macos/template.entitlements \
             -s - \
             ${{ env.GODOT_SRC }}/bin/macos_template_debug.app
 
